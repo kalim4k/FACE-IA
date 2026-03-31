@@ -1,0 +1,5 @@
+{
+  "name": "FACE IA",
+  "description": "Web app for video generation via Kling motion control and image generation via Nano Banana.",
+  "requestFramePermissions": []
+}
