@@ -5,8 +5,6 @@ import { supabase } from './supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { InstallPWA } from './components/InstallPWA';
 
-const KIE_API_KEY = "ffc67aa92b32521540881121dab456dd";
-
 const uploadFileToPublicUrl = async (file: File, userId?: string, fileType?: 'image' | 'video'): Promise<string> => {
   const fileExt = file.name.split('.').pop();
   const fileName = userId ? `${userId}/${Math.random()}.${fileExt}` : `${Math.random()}.${fileExt}`;
@@ -969,11 +967,10 @@ function VideoGenerationView({ onDeductCredits, onRefundCredits, onSaveGeneratio
 
       setStatus('Création de la tâche vidéo...');
       
-      const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+      const createResponse = await fetch('/api/kie-create', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${KIE_API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           model: "kling-2.6/motion-control",
@@ -987,12 +984,18 @@ function VideoGenerationView({ onDeductCredits, onRefundCredits, onSaveGeneratio
         })
       });
 
-      if (!createResponse.ok) {
-        const errData = await createResponse.json();
-        throw new Error(errData.msg || "Erreur lors de la création de la tâche");
+      const createResponseText = await createResponse.text();
+      let createData;
+      try {
+        createData = JSON.parse(createResponseText);
+      } catch (e) {
+        throw new Error(`Erreur de communication avec le serveur (Code ${createResponse.status}).`);
       }
 
-      const createData = await createResponse.json();
+      if (!createResponse.ok) {
+        throw new Error(createData.error || createData.msg || "Erreur lors de la création de la tâche");
+      }
+
       const taskId = createData.data.taskId;
 
       setStatus('Génération en cours... (cela peut prendre plusieurs minutes)');
@@ -1002,17 +1005,20 @@ function VideoGenerationView({ onDeductCredits, onRefundCredits, onSaveGeneratio
 
       while (!isDone) {
         await new Promise(resolve => setTimeout(resolve, 5000));
-        const checkResponse = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
-          headers: {
-            'Authorization': `Bearer ${KIE_API_KEY}`
-          }
-        });
+        const checkResponse = await fetch(`/api/kie-check?taskId=${taskId}`);
         
-        if (!checkResponse.ok) {
-          throw new Error("Erreur lors de la vérification du statut");
+        const checkResponseText = await checkResponse.text();
+        let checkData;
+        try {
+          checkData = JSON.parse(checkResponseText);
+        } catch (e) {
+          throw new Error(`Erreur de communication avec le serveur (Code ${checkResponse.status}).`);
         }
 
-        const checkData = await checkResponse.json();
+        if (!checkResponse.ok) {
+          throw new Error(checkData.error || "Erreur lors de la vérification du statut");
+        }
+
         const state = checkData.data.state;
 
         if (state === 'success') {
@@ -1185,11 +1191,10 @@ function ImageGenerationView({ onDeductCredits, onRefundCredits, onSaveGeneratio
         payload.input.image_input = imageUrls;
       }
 
-      const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+      const createResponse = await fetch('/api/kie-create', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${KIE_API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });
@@ -1209,17 +1214,20 @@ function ImageGenerationView({ onDeductCredits, onRefundCredits, onSaveGeneratio
 
       while (!isDone) {
         await new Promise(resolve => setTimeout(resolve, 3000));
-        const checkResponse = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
-          headers: {
-            'Authorization': `Bearer ${KIE_API_KEY}`
-          }
-        });
+        const checkResponse = await fetch(`/api/kie-check?taskId=${taskId}`);
         
-        if (!checkResponse.ok) {
-          throw new Error("Erreur lors de la vérification du statut");
+        const checkResponseText = await checkResponse.text();
+        let checkData;
+        try {
+          checkData = JSON.parse(checkResponseText);
+        } catch (e) {
+          throw new Error(`Erreur de communication avec le serveur (Code ${checkResponse.status}).`);
         }
 
-        const checkData = await checkResponse.json();
+        if (!checkResponse.ok) {
+          throw new Error(checkData.error || "Erreur lors de la vérification du statut");
+        }
+
         const state = checkData.data.state;
 
         if (state === 'success') {
@@ -1407,7 +1415,7 @@ function CreditsView({ credits, transactions, user }: { credits: number, transac
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await fetch('/api/payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1422,7 +1430,14 @@ function CreditsView({ credits, transactions, user }: { credits: number, transac
         })
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Checkout API returned non-JSON response:", responseText.substring(0, 200));
+        throw new Error(`Erreur de communication avec le serveur de paiement (Code ${response.status}).`);
+      }
 
       if (!response.ok) {
         throw new Error(data.error || "Erreur lors de l'initialisation du paiement");
